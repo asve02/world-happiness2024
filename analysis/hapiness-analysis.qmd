@@ -1,0 +1,276 @@
+---
+title: "World Happiness Analysis-Kaggle dataset"
+author: "Ashish Verma"
+month: "November-2025"
+format: html
+toc: true
+theme: cosmo
+code-fold: true
+code-tools: true
+code-tools-fold: true
+editor: visual
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#List of required packages
+
+packages <- c("tidyverse", "readxl", "janitor", "broom", "plotly", "countrycode")
+
+#Install missing packages
+
+for (pkg in packages) {
+if (!require(pkg, character.only = TRUE)) {
+install.packages(pkg)
+}
+}
+
+#Load all packages
+
+lapply(packages, library, character.only = TRUE)
+```
+
+```{r}
+#Q1:Read happiness dataset (use "Alt + -" for <-)
+
+happiness <- read_excel("../data/happiness.xlsx")
+
+#Quick look at the data
+
+glimpse(happiness)
+colnames(happiness)
+```
+
+```{r}
+#we see that each column names appear with space between them, lets put "_" in place of space 
+
+happiness <- read_excel("../data/happiness.xlsx") |>
+  clean_names()
+
+#check if the column names got cleaned (check structure using glimpse)
+glimpse(happiness)
+colnames(happiness)
+```
+
+```{r}
+#Q2: Which countries and years included in the dataset?
+#Q2.1: Unique list of countries
+happiness |>
+  distinct(country_name) |> #distinct() finds unique values
+  arrange(country_name) #arrange() sorts alphabetically
+#Q2.2: Unique list of years
+happiness |>
+  distinct(year) |> #distinct() finds unique values
+  arrange(year)
+```
+
+```{r}
+#Q3: How many years of data does each country have?
+happiness |>
+  count(country_name, sort = TRUE) #sort used to sort result in descending order
+```
+
+```{r}
+#Q4: What is the average Life Ladder (happiness score) for each year?
+happiness |>
+  group_by(year) |>
+  summarise(
+    mean_happiness = mean(life_ladder, na.rm = TRUE),
+    n_countries = n()
+    ) |>
+  arrange(year)
+#summarise(): calculates summary values inside each group
+#na.rm = TRUE: removes missing values
+```
+
+```{r}
+#Q5: What is the global happiness trend over time? (Line plot)
+#To answer that, for each year we need one number: the mean Life Ladder across all countries that have data in that year.
+
+#Calculate global mean happiness per year
+happiness_yearly <- happiness |>
+group_by(year) |>
+summarise(
+mean_happiness = mean(life_ladder, na.rm = TRUE)
+)
+```
+
+```{r}
+#plot
+happiness_yearly |>
+ggplot(aes(x = year, y = mean_happiness)) +
+geom_line(linewidth = 1.2) +
+geom_point(size = 2) +
+labs(
+title = "Global Happiness Trend Over Time",
+x = "Year",
+y = "Average Life Ladder (Happiness Score)"
+)
+```
+
+```{r}
+#Q6: Which countries are the happiest on average across all years?
+country_means <- happiness |>
+  group_by(country_name) |>
+  summarise(
+    mean_happiness = mean(life_ladder, na.rm = TRUE),
+    n_years = n()
+  ) |>
+  arrange(desc(mean_happiness))
+
+#show top 10 happinest counntries
+head(country_means, 10)
+```
+
+```{r}
+#Q6.1: A bar plot of top 10 happiest countries?
+top10_countries <- country_means |>
+  slice_head(n = 10)
+
+#Plot bar chart of top 10 happiest countries
+top10_countries |>
+ggplot(aes(x = reorder(country_name, mean_happiness), 
+y = mean_happiness)) +
+geom_col() +
+  coord_flip()+
+labs(
+title = "Top 10 Happiest Countries (Average Life Ladder)",
+x = "Country",
+y = "Average Happiness Score"
+)
+
+#aes(x = reorder(country_name, mean_happiness), y = mean_happiness)
+#reorder(x, y) tells R: “Sort x according to y.”
+#“Take country_name and reorder it based on the values of mean_happiness.”
+#Because in a bar plot: The height of the bar is determined by y
+#The position/order of the bars is determined by x
+#So sorting must be applied to x, not y.
+#geom_col(): draw bars where height = y value.This is used when you already have a summary value (like mean), not raw counts.
+#coord_flip(): swaps x and y axes: countries go on the vertical axis
+#bars extend horizontally. This is much easier to read when we have long country names.
+```
+
+```{r}
+#A barplot of bottom 10 countries
+bottom_10_countries <- country_means |>
+  slice_tail(n = 10)
+#plot barchart of bottom 10 countries
+bottom_10_countries |>
+  ggplot(aes(x = reorder(country_name, mean_happiness),
+             y = mean_happiness))+
+  geom_col()+
+  coord_flip()+
+  labs(
+    title = "Bottom 10 happiest countries (Average Life Ladder)",
+    x = "Country",
+    y = "Average Happiness Score"
+  )
+
+```
+
+```{r}
+#Q7: How does GDP relate to happiness?
+#(Happiness = Life Ladder, GDP = Log GDP per capita)
+
+#Step 1: Prepare data (remove missing values)
+
+gdp_data <- happiness |>
+drop_na(life_ladder, log_gdp_per_capita) 
+
+#drop_na() ensures that only rows with complete values are kept
+
+#Step 2: Scatter plot of GDP vs Happiness
+
+gdp_data |>
+ggplot(aes(x = log_gdp_per_capita, y = life_ladder)) +
+geom_point(alpha = 0.4) + #alpha = 0.4 makes points semi-transparent so dense areas become visible
+geom_smooth(method = "lm", se = TRUE) +
+labs(
+title = "Relationship Between GDP and Happiness",
+x = "Log GDP per capita",
+y = "Life Ladder (Happiness Score)"
+)
+#method = "lm" fits a straight line (linear model)
+#se = TRUE adds a shaded confidence interval → uncertainty around the line
+```
+
+```{r}
+#Q7.1: lets try to mention the linear regression equation on the plot
+
+#Step 1: Clean data
+
+gdp_data <- happiness |>
+drop_na(life_ladder, log_gdp_per_capita)
+
+#Step 2: Fit linear model (Happiness = Intercept + Slope × LogGDP)
+#even if one is missing, that row can't be used
+
+model <- lm(life_ladder ~  log_gdp_per_capita, data = gdp_data)
+
+#Step 3: Extract coefficients and R²
+model_stats <- tidy(model) #this returns a table of statistics of regression table (row1 = intercept (constant term); row2: slope (coefficient of log GDP))
+model_glance <- glance(model) #extract  R2
+
+#store these statistics value
+intercept <- round(model_stats$estimate[1], 2) #till 2 decimenl places
+slope <- round(model_stats$estimate[2], 2)
+r2 <- round(model_glance$r.squared, 2)
+
+#build equation text
+eq_text <- paste0( 
+"Happiness = ", intercept, " + ", slope, " × logGDP\n",
+"R² = ", r2
+)
+
+#paste0(): It concatenates strings without spaces unless we add them manually.
+#Step 4: Plot with regression line + equation
+
+gdp_data |>
+ggplot(aes(log_gdp_per_capita, life_ladder)) +
+geom_point(alpha = 0.4) +
+geom_smooth(method = "lm", se = TRUE) +
+annotate(
+"text", #We want to draw text, not shapes or lines.
+x = max(gdp_data$log_gdp_per_capita) * 0.6, #Place the equation 60% across the x-axis (right side but not too far).
+y = max(gdp_data$life_ladder) * 0.95, #Place it 95% up the y-axis (near the top)
+label = eq_text, #This is the formatted equation + R²
+hjust = 0, #Left-align the text (so it doesn’t look squeezed).
+size = 4
+) +
+labs(
+title = "GDP vs Happiness with Regression Equation",
+x = "Log GDP per capita",
+y = "Life Ladder (Happiness Score)"
+)
+```
+
+```{r}
+
+# Prepare data for mapping
+happiness_map <- happiness |>
+  mutate( 
+    iso3 = countrycode(country_name, "country.name", "iso3c")
+  ) |>
+  drop_na(iso3, life_ladder) #remove rows where iso3 code and life_ladder missing
+
+# Build interactive world map with year slider
+fig <- happiness_map |>
+  plot_ly(  #plotly interactive plot
+    locations = ~iso3, #Draw a country based on its ISO3 code
+    z = ~life_ladder, #This determines the color shading of each country.
+    frame = ~year, #created the year slider, one map per year
+    type = "choropleth", #A choropleth map meanswhere each country is shaded based on the value of a variable
+    color = ~life_ladder, #Use Life Ladder values to determine the map color.
+    colorscale = "Viridis" #color-blind friendly
+  ) |>
+  colorbar(title = "Life Ladder") |> #Adds a legend on the right showing the mapping between color and happiness score.
+  layout( #Controls the visual layout
+    title = "World Happiness Over Time",
+    geo = list(showframe = FALSE, showcoastlines = FALSE)) #no border frames and coastlines
+
+fig
+##We take the original happiness dataset and add a new column called iso3
+#Plotly requires ISO3 codes in the locations argument.
+```
