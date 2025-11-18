@@ -8,7 +8,7 @@ website:
     left:
       - href: index.qmd
         text: Home
-      - href: analysis/happiness-report.qmd
+      - href: analysis/happiness-analysis.qmd
         text: Happiness analysis
 
 format:

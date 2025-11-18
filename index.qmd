@@ -1,0 +1,17 @@
+---
+title: "World Happiness Analysis"
+author: "Ashish Verma"
+format: html
+editor: visual
+---
+
+```{}
+```
+
+# World Happiness Analysis (Kaggle Dataset)
+
+Welcome to this Quarto website exploring the World Happiness dataset using R and the tidyverse.
+
+You can view the full analysis here:
+
+-   [Happiness analysis](analysis/happiness-analysis.qmd)
