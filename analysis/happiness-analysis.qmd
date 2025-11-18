@@ -17,7 +17,7 @@ execute:
 ```{r}
 #List of required packages
 
-packages <- c("tidyverse", "readxl", "janitor", "broom", "plotly", "countrycode")
+packages <- c("tidyverse", "readxl", "janitor", "broom", "plotly", "countrycode", "tidyr")
 
 #Install missing packages
 
@@ -47,7 +47,7 @@ colnames(happiness)
 #we see that each column names appear with space between them, lets put "_" in place of space 
 
 happiness <- read_excel("../data/happiness.xlsx") |>
-  clean_names()
+  clean_names() # converts all column names into tidy, R-friendly names
 
 #check if the column names got cleaned (check structure using glimpse)
 glimpse(happiness)
@@ -82,11 +82,117 @@ happiness |>
     ) |>
   arrange(year)
 #summarise(): calculates summary values inside each group
-#na.rm = TRUE: removes missing values
+#na.rm = TRUE: 
 ```
 
 ```{r}
-#Q5: What is the global happiness trend over time? (Line plot)
+#Q5: Classify life Ladder scores into High, Medium, and Low groups based on quartiles and add this as a new column
+#Step 1 — Create ladder_group using ntile()
+happiness_grouped <- happiness |>
+  mutate(
+    ladder_group = case_when( # case_when() lets us assign a category based on conditions
+      ntile(life_ladder, 4) == 4 ~ "High", # divides the numeric variable into 4 equal sized groups (quartiles)
+      ntile(life_ladder, 4) %in% c(2, 3) ~ "Medium", # Q1: bottom 25%; Q2-3: Middle 50%; Q4: Top 25%
+      ntile(life_ladder, 4) == 1 ~ "Low"
+    )
+  )
+#After case_when(), the column is a character vector: e.g., "High"
+#also, Character vectors are alphabetically ordered when plotted or summarized: High, Low, Medium- this is not the logical order of happiness
+
+# Step 2: Optional ordered factor 
+happiness_grouped <- happiness_grouped |>
+  mutate(
+    ladder_group = factor(ladder_group, #A factor is a categorical variable with controlled order
+                          levels = c("Low", "Medium", "High"))
+  )
+happiness_grouped
+```
+
+```{r}
+#Q5: List all countries where Happiness Score is above the global mean
+#Step1: Calculate global mean happiness score
+global_mean_happiness <- happiness |>
+  summarise(global_mean = mean(life_ladder, na.rm = TRUE)) |> # returns a tibble with one row and one column, not a numeric value
+  pull(global_mean) # extracts the value and turn into a pure numeric vector
+global_mean_happiness
+
+#Step2: filter countries avove this mean
+above_mean <- happiness |>
+  filter(life_ladder > global_mean_happiness) |>
+  arrange(desc(life_ladder))
+
+above_mean
+```
+
+```{r}
+colnames(happiness)
+```
+
+```{r}
+#Q6: Correlation of life_ladder with all variables
+#select numeric variable only
+numeric_data <- happiness |>
+  select(where(is.numeric))
+
+```
+
+```{r}
+#Compute correlation of each numeric variable with life_ladder
+life_cor <- numeric_data |>
+  summarise(
+    across(
+      .cols = everything(),
+      .fns = ~ cor(.x, life_ladder, use = "complete.obs")
+    )
+  )
+
+#Pivot longer and remove the self-correlation (1.0)
+life_cor_long <- life_cor |>
+  tidyr::pivot_longer(
+    cols = everything(),
+    names_to = "variable",
+    values_to = "correlation"
+  ) |>
+  filter(variable != "life_ladder")
+#heatmap
+
+ggplot(life_cor_long, aes(x = variable, y = "life_ladder", fill = correlation)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(correlation, 2)), color = "black") +
+  scale_fill_gradient2(
+    low = "red",
+    high = "blue",
+    mid = "white",
+    midpoint = 0,
+    limits = c(-1, 1)
+  ) +
+  labs(
+    title = "Correlation of Life Ladder with All Numeric Variables",
+    x = "Variable",
+    y = ""
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 35, hjust = 1)
+  )
+
+#heatmap does not look good, so a barplot plotted
+ggplot(life_cor_long, aes(x = reorder(variable, correlation), y = correlation)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  geom_text(aes(label = round(correlation, 2)),
+            hjust = -0.1, size = 4) +
+  labs(
+    title = "Correlation of Life Ladder with All Numeric Variables",
+    x = "Variable",
+    y = "Correlation"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+#Q7: What is the global happiness trend over time? (Line plot)
 #To answer that, for each year we need one number: the mean Life Ladder across all countries that have data in that year.
 
 #Calculate global mean happiness per year
@@ -107,11 +213,12 @@ labs(
 title = "Global Happiness Trend Over Time",
 x = "Year",
 y = "Average Life Ladder (Happiness Score)"
-)
+)+
+  theme_bw()
 ```
 
 ```{r}
-#Q6: Which countries are the happiest on average across all years?
+#Q8: Which countries are the happiest on average across all years?
 country_means <- happiness |>
   group_by(country_name) |>
   summarise(
@@ -125,7 +232,7 @@ head(country_means, 10)
 ```
 
 ```{r}
-#Q6.1: A bar plot of top 10 happiest countries?
+#Q8.1: A bar plot of top 10 happiest countries?
 top10_countries <- country_means |>
   slice_head(n = 10)
 
@@ -153,7 +260,7 @@ y = "Average Happiness Score"
 ```
 
 ```{r}
-#A barplot of bottom 10 countries
+#Q8.2: A barplot of bottom 10 countries
 bottom_10_countries <- country_means |>
   slice_tail(n = 10)
 #plot barchart of bottom 10 countries
@@ -171,7 +278,7 @@ bottom_10_countries |>
 ```
 
 ```{r}
-#Q7: How does GDP relate to happiness?
+#Q9: How does GDP relate to happiness?
 #(Happiness = Life Ladder, GDP = Log GDP per capita)
 
 #Step 1: Prepare data (remove missing values)
@@ -197,7 +304,7 @@ y = "Life Ladder (Happiness Score)"
 ```
 
 ```{r}
-#Q7.1: lets try to mention the linear regression equation on the plot
+#Q9.1: lets try to mention the linear regression equation on the plot
 
 #Step 1: Clean data
 
@@ -248,7 +355,8 @@ y = "Life Ladder (Happiness Score)"
 
 ```{r}
 
-# Prepare data for mapping
+# Q10: Plot a worl map and show how happiness score changes over time -interactive plot
+#Prepare data for mapping
 happiness_map <- happiness |>
   mutate( 
     iso3 = countrycode(country_name, "country.name", "iso3c")
